@@ -43,7 +43,7 @@
 
 #define VC0706_READ_CHUNK 64
 
-#define LINK_UART_HANDLE  huart5          // <--- change to your UART handle (huart3, huart7, etc.)
+#define LINK_UART_HANDLE  huart1          // <--- change to your UART handle (huart3, huart7, etc.)
 #define SEND_FILENAME     "im5.JPG"
 
 /* ------------------------ */
@@ -131,7 +131,7 @@ void myprintf(const char *fmt, ...) {
   va_end(args);
 
   int len = strlen(buffer);
-  HAL_UART_Transmit(&huart4, (uint8_t*)buffer, len, -1);
+  HAL_UART_Transmit(&huart5, (uint8_t*)buffer, len, -1);
 
 }
 
@@ -260,6 +260,10 @@ int send_file_over_uart(const char *path)
 static volatile bool g_sending  = false;
 static bool btn_prev = true; // idle-high on many Nucleo boards
 
+
+//////////PARA LA NUCLEO////////////
+
+/*
 static bool button_pressed_edge(void)
 {
     bool now = (HAL_GPIO_ReadPin(USER_Btn_GPIO_Port, USER_Btn_Pin) == GPIO_PIN_RESET);
@@ -268,7 +272,7 @@ static bool button_pressed_edge(void)
     return pressed;
 }
 
-
+*/
 
 
 
@@ -391,6 +395,10 @@ int capturar_imagen_a_sd_manual(vc0706_t *cam) {
     return 0;
 }
 
+///////////// PARA LA NUCLEO ///////////
+
+/*
+
 void user_loop_sender_sd(void)
 {
     if (!g_sending && button_pressed_edge()) {
@@ -430,6 +438,7 @@ void user_loop_sender_cam_sd(void)
     }
 }
 
+*/
 
 
 
@@ -542,7 +551,7 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
-	  user_loop_sender_sd();
+	  //user_loop_sender_sd();
   }
   /* USER CODE END 3 */
 }
@@ -750,22 +759,22 @@ static void MX_GPIO_Init(void)
   __HAL_RCC_GPIOD_CLK_ENABLE();
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(GPIOA, SPI1_CS_Pin|LED_Pin, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(GPIOA, SPI1_CS_Pin|LED_TEST_Pin, GPIO_PIN_RESET);
 
   /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(SD_PWR_GPIO_Port, SD_PWR_Pin, GPIO_PIN_RESET);
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(GPIOG, GPIO_PIN_1|GPIO_PIN_6, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(GPIOG, EN_FR_Pin|EN_SD_Pin, GPIO_PIN_RESET);
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(GPIOD, GPIO_PIN_8|GPIO_PIN_1, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(GPIOD, OE_SD_Pin|EN_CAM_Pin, GPIO_PIN_RESET);
 
   /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(WDG_GPIO_Port, WDG_Pin, GPIO_PIN_RESET);
 
-  /*Configure GPIO pins : SPI1_CS_Pin LED_Pin */
-  GPIO_InitStruct.Pin = SPI1_CS_Pin|LED_Pin;
+  /*Configure GPIO pins : SPI1_CS_Pin LED_TEST_Pin */
+  GPIO_InitStruct.Pin = SPI1_CS_Pin|LED_TEST_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
@@ -778,15 +787,15 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(SD_PWR_GPIO_Port, &GPIO_InitStruct);
 
-  /*Configure GPIO pins : PG1 PG6 */
-  GPIO_InitStruct.Pin = GPIO_PIN_1|GPIO_PIN_6;
+  /*Configure GPIO pins : EN_FR_Pin EN_SD_Pin */
+  GPIO_InitStruct.Pin = EN_FR_Pin|EN_SD_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(GPIOG, &GPIO_InitStruct);
 
-  /*Configure GPIO pins : PD8 PD1 */
-  GPIO_InitStruct.Pin = GPIO_PIN_8|GPIO_PIN_1;
+  /*Configure GPIO pins : OE_SD_Pin EN_CAM_Pin */
+  GPIO_InitStruct.Pin = OE_SD_Pin|EN_CAM_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;

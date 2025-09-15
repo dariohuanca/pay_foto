@@ -61,12 +61,22 @@ void Error_Handler(void);
 #define SPI1_CS_GPIO_Port GPIOA
 #define SD_PWR_Pin GPIO_PIN_13
 #define SD_PWR_GPIO_Port GPIOF
-#define LED_Pin GPIO_PIN_15
-#define LED_GPIO_Port GPIOA
+#define EN_FR_Pin GPIO_PIN_1
+#define EN_FR_GPIO_Port GPIOG
+#define OE_SD_Pin GPIO_PIN_8
+#define OE_SD_GPIO_Port GPIOD
+#define EN_SD_Pin GPIO_PIN_6
+#define EN_SD_GPIO_Port GPIOG
+#define LED_TEST_Pin GPIO_PIN_15
+#define LED_TEST_GPIO_Port GPIOA
+#define EN_CAM_Pin GPIO_PIN_1
+#define EN_CAM_GPIO_Port GPIOD
 #define WDG_Pin GPIO_PIN_0
 #define WDG_GPIO_Port GPIOE
 
 /* USER CODE BEGIN Private defines */
+
+#define SD_SPI_HANDLE  hspi1
 
 /* USER CODE END Private defines */
 
