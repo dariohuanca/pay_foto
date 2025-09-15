@@ -344,6 +344,9 @@ int capturar_imagen_a_sd_manual(vc0706_t *cam) {
     uint32_t written = 0;
     int payload_offset = -1; // will be 0 or 5 after first chunk
 
+	//Watchdog togglepin
+	HAL_GPIO_TogglePin(WDG_GPIO_Port, WDG_Pin);
+
     while (written < jpglen) {
         uint32_t remain = jpglen - written;
         uint8_t n = (remain < VC0706_READ_CHUNK ) ? (uint8_t)remain : (uint8_t)VC0706_READ_CHUNK ;
@@ -383,6 +386,9 @@ int capturar_imagen_a_sd_manual(vc0706_t *cam) {
 
         written += n;
         if ((written % (10*1024)) < VC0706_READ_CHUNK ) myprintf(".");
+
+    	//Watchdog togglepin
+    	HAL_GPIO_TogglePin(WDG_GPIO_Port, WDG_Pin);
     }
     myprintf("\r\n");
 
@@ -409,36 +415,40 @@ void user_loop_sender_sd(void)
     }
 }
 
+*/
+
+
+
 void user_loop_sender_cam_sd(void)
 {
-    if (!g_sending && button_pressed_edge()) {
-        g_sending = true;
 
-        char filename[40];
-        if (generar_nombre_unico(filename, sizeof(filename)) != 0) {
-            myprintf("name gen failed\r\n");
-            g_sending = false;
-            return;
-        }
+	char filename[40];
+	if (generar_nombre_unico(filename, sizeof(filename)) != 0) {
+		myprintf("name gen failed\r\n");
 
-        myprintf("Capturando y guardando: %s\r\n", filename);
-        int rc = capturar_imagen_a_sd_manual(&cam);
-        if (rc != 0) {
-            myprintf("capture/save failed rc=%d\r\n", rc);
-            g_sending = false;
-            return;
-        }
-        g_sending = false;
-        myprintf("Enviando por UART: %s\r\n", filename);
-        while(1){
-        	user_loop_sender_sd();
-        }
+		return;
+	}
+
+	myprintf("Capturando y guardando: %s\r\n", filename);
+	int rc = capturar_imagen_a_sd_manual(&cam);
+	if (rc != 0) {
+		myprintf("capture/save failed rc=%d\r\n", rc);
+		return;
+	}
+
+	//Watchdog togglepin
+	HAL_GPIO_TogglePin(WDG_GPIO_Port, WDG_Pin);
 
 
-    }
+	myprintf("Enviando por UART: %s\r\n", filename);
+
+	HAL_Delay(500);
+	(void)send_file_over_uart(filename);
+	myprintf("Termino envio: %s\r\n", filename);
+
 }
 
-*/
+
 
 
 
@@ -495,10 +505,22 @@ int main(void)
   MX_UART5_Init();
   /* USER CODE BEGIN 2 */
 
+  HAL_GPIO_WritePin(WDG_GPIO_Port, WDG_Pin, GPIO_PIN_RESET);
+
+  //Habilitar la sd y la camara
+  HAL_GPIO_WritePin(GPIOF, SD_PWR_Pin,                   GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(GPIOD, OE_SD_Pin  | EN_CAM_Pin,      GPIO_PIN_RESET);
+
+  //Deshabilitar la FRAM
+  HAL_GPIO_WritePin(GPIOG, EN_FR_Pin  | EN_SD_Pin,       GPIO_PIN_SET);
+
 
   myprintf("\r\n~ SD card demo by kiwih ~\r\n\r\n");
 
   HAL_Delay(2000); //a short delay is important to let the SD card settle
+
+  //Watchdog togglepin
+  HAL_GPIO_TogglePin(WDG_GPIO_Port, WDG_Pin);
 
   //some variables for FatFs
   FATFS FatFs; 	//Fatfs handle
@@ -530,8 +552,18 @@ int main(void)
   myprintf("SD card stats:\r\n%10lu KiB total drive space.\r\n%10lu KiB available.\r\n", total_sectors / 2, free_sectors / 2);
   HAL_Delay(1000);
 
+  //Watchdog togglepin
+  HAL_GPIO_TogglePin(WDG_GPIO_Port, WDG_Pin);
+
+
   int rc = camera_init();
+
+  //Watchdog togglepin
+  HAL_GPIO_TogglePin(WDG_GPIO_Port, WDG_Pin);
+
   HAL_Delay(1000);
+
+
   if (rc != 0) {
       myprintf("camera_init failed (%d)\r\n", rc);
       // opcional: parpadear LED o quedarse en loop de error
@@ -551,7 +583,9 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
-	  //user_loop_sender_sd();
+	  HAL_Delay(5000);
+	  HAL_GPIO_TogglePin(WDG_GPIO_Port, WDG_Pin);
+	  user_loop_sender_cam_sd();
   }
   /* USER CODE END 3 */
 }
