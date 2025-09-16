@@ -63,6 +63,8 @@ void Error_Handler(void);
 #define SD_PWR_GPIO_Port GPIOF
 #define EN_FR_Pin GPIO_PIN_1
 #define EN_FR_GPIO_Port GPIOG
+#define PTE_Pin GPIO_PIN_8
+#define PTE_GPIO_Port GPIOE
 #define OE_SD_Pin GPIO_PIN_8
 #define OE_SD_GPIO_Port GPIOD
 #define EN_SD_Pin GPIO_PIN_6

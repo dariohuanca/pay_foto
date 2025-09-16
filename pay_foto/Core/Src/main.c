@@ -505,14 +505,34 @@ int main(void)
   MX_UART5_Init();
   /* USER CODE BEGIN 2 */
 
+  myprintf("\r\n~ SD card demo by kiwih ~\r\n\r\n");
+  HAL_Delay(2000);
+
   HAL_GPIO_WritePin(WDG_GPIO_Port, WDG_Pin, GPIO_PIN_RESET);
 
   //Habilitar la sd y la camara
   HAL_GPIO_WritePin(GPIOF, SD_PWR_Pin,                   GPIO_PIN_RESET);
   HAL_GPIO_WritePin(GPIOD, OE_SD_Pin  | EN_CAM_Pin,      GPIO_PIN_RESET);
 
+  //Led apagado
+  HAL_GPIO_WritePin(LED_TEST_GPIO_Port, LED_TEST_Pin,                   GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(PTE_GPIO_Port, PTE_Pin,                   GPIO_PIN_RESET);
+
   //Deshabilitar la FRAM
   HAL_GPIO_WritePin(GPIOG, EN_FR_Pin  | EN_SD_Pin,       GPIO_PIN_SET);
+
+
+  //Led prendido
+  HAL_GPIO_WritePin(LED_TEST_GPIO_Port, LED_TEST_Pin,                   GPIO_PIN_SET);
+  HAL_GPIO_WritePin(PTE_GPIO_Port, PTE_Pin,                   GPIO_PIN_SET);
+  HAL_Delay(2000);
+
+  HAL_GPIO_WritePin(LED_TEST_GPIO_Port, LED_TEST_Pin,                   GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(PTE_GPIO_Port, PTE_Pin,                   GPIO_PIN_RESET);
+  HAL_Delay(2000);
+
+  HAL_GPIO_WritePin(LED_TEST_GPIO_Port, LED_TEST_Pin,                   GPIO_PIN_SET);
+
 
 
   myprintf("\r\n~ SD card demo by kiwih ~\r\n\r\n");
@@ -521,6 +541,8 @@ int main(void)
 
   //Watchdog togglepin
   HAL_GPIO_TogglePin(WDG_GPIO_Port, WDG_Pin);
+
+  HAL_GPIO_WritePin(LED_TEST_GPIO_Port, LED_TEST_Pin,                   GPIO_PIN_RESET);
 
   //some variables for FatFs
   FATFS FatFs; 	//Fatfs handle
@@ -531,7 +553,7 @@ int main(void)
   fres = f_mount(&FatFs, "", 1); //1=mount now
   if (fres != FR_OK) {
 	myprintf("f_mount error (%i)\r\n", fres);
-	while(1);
+	//while(1);
   }
 
   //Let's get some statistics from the SD card
@@ -542,7 +564,7 @@ int main(void)
   fres = f_getfree("", &free_clusters, &getFreeFs);
   if (fres != FR_OK) {
 	myprintf("f_getfree error (%i)\r\n", fres);
-	while(1);
+	//while(1);
   }
 
   //Formula comes from ChaN's documentation
@@ -572,6 +594,11 @@ int main(void)
       myprintf("camera ok\r\n");
   }
 
+  //Led apagado
+  HAL_GPIO_WritePin(LED_TEST_GPIO_Port, LED_TEST_Pin,                   GPIO_PIN_SET);
+  HAL_Delay(5000);
+  HAL_GPIO_WritePin(LED_TEST_GPIO_Port, LED_TEST_Pin,                   GPIO_PIN_RESET);
+
 
 
   /* USER CODE END 2 */
@@ -583,9 +610,10 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
-	  HAL_Delay(5000);
-	  HAL_GPIO_TogglePin(WDG_GPIO_Port, WDG_Pin);
-	  user_loop_sender_cam_sd();
+	  myprintf("camara lista\r\n");
+	  //HAL_Delay(5000);
+	  //HAL_GPIO_TogglePin(WDG_GPIO_Port, WDG_Pin);
+	  //user_loop_sender_cam_sd();
   }
   /* USER CODE END 3 */
 }
@@ -791,6 +819,7 @@ static void MX_GPIO_Init(void)
   __HAL_RCC_GPIOG_CLK_ENABLE();
   __HAL_RCC_GPIOE_CLK_ENABLE();
   __HAL_RCC_GPIOD_CLK_ENABLE();
+  __HAL_RCC_GPIOC_CLK_ENABLE();
 
   /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(GPIOA, SPI1_CS_Pin|LED_TEST_Pin, GPIO_PIN_RESET);
@@ -802,10 +831,10 @@ static void MX_GPIO_Init(void)
   HAL_GPIO_WritePin(GPIOG, EN_FR_Pin|EN_SD_Pin, GPIO_PIN_RESET);
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(GPIOD, OE_SD_Pin|EN_CAM_Pin, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(GPIOE, PTE_Pin|WDG_Pin, GPIO_PIN_RESET);
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(WDG_GPIO_Port, WDG_Pin, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(GPIOD, OE_SD_Pin|EN_CAM_Pin, GPIO_PIN_RESET);
 
   /*Configure GPIO pins : SPI1_CS_Pin LED_TEST_Pin */
   GPIO_InitStruct.Pin = SPI1_CS_Pin|LED_TEST_Pin;
@@ -828,19 +857,19 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(GPIOG, &GPIO_InitStruct);
 
+  /*Configure GPIO pins : PTE_Pin WDG_Pin */
+  GPIO_InitStruct.Pin = PTE_Pin|WDG_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+  HAL_GPIO_Init(GPIOE, &GPIO_InitStruct);
+
   /*Configure GPIO pins : OE_SD_Pin EN_CAM_Pin */
   GPIO_InitStruct.Pin = OE_SD_Pin|EN_CAM_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(GPIOD, &GPIO_InitStruct);
-
-  /*Configure GPIO pin : WDG_Pin */
-  GPIO_InitStruct.Pin = WDG_Pin;
-  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
-  GPIO_InitStruct.Pull = GPIO_NOPULL;
-  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
-  HAL_GPIO_Init(WDG_GPIO_Port, &GPIO_InitStruct);
 
 /* USER CODE BEGIN MX_GPIO_Init_2 */
 /* USER CODE END MX_GPIO_Init_2 */
