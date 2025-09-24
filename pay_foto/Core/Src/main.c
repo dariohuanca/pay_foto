@@ -48,7 +48,7 @@
 
 /* ------------------------ */
 
-#define CHUNK          64u              // multiple of 512 recommended
+#define CHUNK          256u              // multiple of 512 recommended
 #define SOF0           0x55
 #define SOF1           0xAA
 #define ACK            0x06
@@ -62,7 +62,7 @@ static vc0706_t cam;
 extern UART_HandleTypeDef LINK_UART_HANDLE;
 
 
-void myprintf(const char *fmt, ...);
+//void myprintf(const char *fmt, ...);
 static int generar_nombre_unico(char *out, size_t out_sz);
 char filename[40];
 
@@ -77,52 +77,61 @@ char filename[40];
 /* Private variables ---------------------------------------------------------*/
 SPI_HandleTypeDef hspi1;
 
-UART_HandleTypeDef huart5;
 UART_HandleTypeDef huart1;
 UART_HandleTypeDef huart2;
 
 /* USER CODE BEGIN PV */
 
+
+static inline void uart_flush_rx_polling(UART_HandleTypeDef *huart)
+{
+    uint8_t dump;
+    while (HAL_UART_Receive(huart, &dump, 1, 0) == HAL_OK) {
+        /* discard */
+    }
+    /* If an overrun happened, clear it so RX keeps working */
+    __HAL_UART_CLEAR_OREFLAG(huart);
+}
+
 int camera_init(void) {
-    myprintf("\r\ninicializando camara...\r\n");
+    //myprintf("\r\ninicializando camara...\r\n");
 
     // Bind to USART2 at 38400 (will HAL_UART_Init with that baud if needed)
     if (!vc0706_begin(&cam, &huart2, 38400)) {
-        myprintf("no se detecto la camara o error de comunicacion\r\n");
+        //myprintf("no se detecto la camara o error de comunicacion\r\n");
         return -1;
     }
 
     // Version probe (good connectivity test)
     char *ver = vc0706_get_version(&cam);
     if (!ver) {
-        myprintf("get_version fallo\r\n");
+        //myprintf("get_version fallo\r\n");
         return -2;
     }
     // The buffer is NUL-terminated; print a trimmed line
-    myprintf("version: %s\r\n", ver);
+    //myprintf("version: %s\r\n", ver);
 
     // Set resolution 640x480 (same as cam.setImageSize(VC0706_640x480))
     if (!vc0706_set_image_size(&cam, VC0706_640x480)) {
-        myprintf("no se pudo fijar resolucion 640x480\r\n");
+        //myprintf("no se pudo fijar resolucion 640x480\r\n");
         return -3;
     }
     // Read back to confirm
     uint8_t sz = vc0706_get_image_size(&cam);
     if (sz != VC0706_640x480) {
-        myprintf("aviso: resolucion leida = 0x%02X (esperado 0x00)\r\n", sz);
+        //myprintf("aviso: resolucion leida = 0x%02X (esperado 0x00)\r\n", sz);
     } else {
-        myprintf("resolucion establecida a 640x480\r\n");
+        //myprintf("resolucion establecida a 640x480\r\n");
     }
 
     // (Opcional) ajustar compresion JPEG: 0x00 (max calidad) .. 0xFF (max compresion)
     // (void)vc0706_set_compression(&cam, 0x36);
 
-    myprintf("camara lista\r\n");
+    //myprintf("camara lista\r\n");
     return 0;
 }
 
-
-
+/*
 void myprintf(const char *fmt, ...) {
   static char buffer[256];
   va_list args;
@@ -131,9 +140,10 @@ void myprintf(const char *fmt, ...) {
   va_end(args);
 
   int len = strlen(buffer);
-  HAL_UART_Transmit(&huart5, (uint8_t*)buffer, len, -1);
+  HAL_UART_Transmit(&huart4, (uint8_t*)buffer, len, -1);
 
 }
+*/
 
 
 /* ===== CRC16-CCITT (poly 0x1021, init 0xFFFF) ===== */
@@ -166,19 +176,20 @@ static int send_header(uint32_t fsz)
 
 
     if (uart_send(hdr, sizeof(hdr)) != 0) return -1;
-    myprintf("[TX] uart_send end\r\n");
+    //myprintf("[TX] uart_send end\r\n");
 
     uint8_t ack = 0;
     if (uart_recv(&ack, 1, UART_TMO_MS) != 0) return -2;
     //myprintf("uart ack = %d \r\n; ");
-    myprintf("[TX] header_ok\r\n");
-    myprintf("El ACK es 0x%02X\r\n", (unsigned)ack);   // Hex con cero a la izquierda
+    //myprintf("[TX] header_ok\r\n");
+    //myprintf("El ACK es 0x%02X\r\n", (unsigned)ack);   // Hex con cero a la izquierda
     return (ack == ACK) ? 0 : -3;
 }
 
 static int send_frame(uint16_t seq, const uint8_t *data, uint16_t len)
 {
-	myprintf("Enviando x4 \r\n");
+	//myprintf("Enviando x4 \r\n");
+	HAL_Delay(100);
     static uint8_t tx[CHUNK + 8]; // SOF(2) + seq(2) + len(2) + payload + crc(2)
     tx[0] = SOF0; tx[1] = SOF1;
     tx[2] = (uint8_t)(seq); tx[3] = (uint8_t)(seq >> 8);
@@ -231,15 +242,18 @@ int send_file_over_uart(const char *path)
 
     uint16_t seq = 0;
     uint32_t sent = 0;
-    myprintf("Enviando x2 \r\n");
+    //myprintf("Enviando x2 \r\n");
+    //HAL_GPIO_TogglePin(WDG_GPIO_Port, WDG_Pin);
 
     while (sent < fsz) {
-    	myprintf("Enviando x3 \r\n");
+    	HAL_GPIO_TogglePin(WDG_GPIO_Port, WDG_Pin);
+    	HAL_Delay(100);
+    	//myprintf("Enviando x3 \r\n");
 
         UINT need = (fsz - sent > CHUNK) ? CHUNK : (UINT)(fsz - sent);
         fr = f_read(&f, buf, need, &br);
         //myprintf("[TX] f_read fr=%d br=%u need=%u\r\n", (int)fr, (unsigned)br, (unsigned)need);
-        //if (fr != FR_OK || br == 0) { myprintf("[TX] f_read_fail\r\n"); return -105; }
+        //if (fr != FR_OK || br == 0) { return -105; }
         if (fr != FR_OK) { f_close(&f); f_mount(NULL, "", 0); return -103; }
         if (br == 0) break;
 
@@ -259,11 +273,8 @@ int send_file_over_uart(const char *path)
  */
 static volatile bool g_sending  = false;
 static bool btn_prev = true; // idle-high on many Nucleo boards
-
-
-//////////PARA LA NUCLEO////////////
-
 /*
+
 static bool button_pressed_edge(void)
 {
     bool now = (HAL_GPIO_ReadPin(USER_Btn_GPIO_Port, USER_Btn_Pin) == GPIO_PIN_RESET);
@@ -271,8 +282,8 @@ static bool button_pressed_edge(void)
     btn_prev = now;
     return pressed;
 }
+/*
 
-*/
 
 
 
@@ -305,27 +316,27 @@ int capturar_imagen_a_sd_manual(vc0706_t *cam) {
 
     MX_FATFS_Init();
     fr = f_mount(&fs, "", 1);
-    if (fr != FR_OK) { myprintf("f_mount=%d\r\n", fr); return -100; }
+    if (fr != FR_OK) { return -100; }
 
     if (!vc0706_take_picture(cam)) {
-        myprintf("take_picture FAIL\r\n");
+        //myprintf("take_picture FAIL\r\n");
         f_mount(NULL, "", 0);
         return -200;
     }
 
     uint32_t jpglen = vc0706_frame_length(cam);
     if (jpglen == 0) {
-        myprintf("frame_length=0\r\n");
+        //myprintf("frame_length=0\r\n");
         (void)vc0706_resume_video(cam);
         f_mount(NULL, "", 0);
         return -201;
     }
-    myprintf("size=%lu bytes\r\n", (unsigned long)jpglen);
+    //myprintf("size=%lu bytes\r\n", (unsigned long)jpglen);
 
     //char filename[40];
     int rc = generar_nombre_unico(filename, sizeof(filename));
     if (rc != 0) {
-        myprintf("name err=%d\r\n", rc);
+        //myprintf("name err=%d\r\n", rc);
         (void)vc0706_resume_video(cam);
         f_mount(NULL, "", 0);
         return -202;
@@ -334,20 +345,18 @@ int capturar_imagen_a_sd_manual(vc0706_t *cam) {
 
     fr = f_open(&file, filename, FA_WRITE | FA_CREATE_NEW);
     if (fr != FR_OK) {
-        myprintf("f_open=%d\r\n", fr);
+        //myprintf("f_open=%d\r\n", fr);
         (void)vc0706_resume_video(cam);
         f_mount(NULL, "", 0);
         return -203;
     }
-    myprintf("writing %s ...\r\n", filename);
+    //myprintf("writing %s ...\r\n", filename);
 
     uint32_t written = 0;
     int payload_offset = -1; // will be 0 or 5 after first chunk
 
-	//Watchdog togglepin
-	HAL_GPIO_TogglePin(WDG_GPIO_Port, WDG_Pin);
-
     while (written < jpglen) {
+    	HAL_GPIO_TogglePin(WDG_GPIO_Port, WDG_Pin);
         uint32_t remain = jpglen - written;
         uint8_t n = (remain < VC0706_READ_CHUNK ) ? (uint8_t)remain : (uint8_t)VC0706_READ_CHUNK ;
         if (n > 240) n = 240;  // safety: VC0706 count is uint8_t
@@ -355,7 +364,7 @@ int capturar_imagen_a_sd_manual(vc0706_t *cam) {
         uint8_t *buf = vc0706_read_picture(cam, n, 500);   // returns [5-byte header] + n data
 
         if (!buf) {
-            myprintf("read_picture timeout/null\r\n");
+            //myprintf("read_picture timeout/null\r\n");
             f_close(&file);
             (void)vc0706_resume_video(cam);
             f_mount(NULL, "", 0);
@@ -377,7 +386,7 @@ int capturar_imagen_a_sd_manual(vc0706_t *cam) {
         /* write ONLY JPEG payload; skip 5-byte VC0706 header */
         fr = f_write(&file, buf + payload_offset, n, &bw);
         if (fr != FR_OK || bw != n) {
-            myprintf("f_write err=%d bw=%u n=%u\r\n", fr, (unsigned)bw, (unsigned)n);
+            //myprintf("f_write err=%d bw=%u n=%u\r\n", fr, (unsigned)bw, (unsigned)n);
             f_close(&file);
             (void)vc0706_resume_video(cam);
             f_mount(NULL, "", 0);
@@ -385,71 +394,692 @@ int capturar_imagen_a_sd_manual(vc0706_t *cam) {
         }
 
         written += n;
-        if ((written % (10*1024)) < VC0706_READ_CHUNK ) myprintf(".");
-
-    	//Watchdog togglepin
-    	HAL_GPIO_TogglePin(WDG_GPIO_Port, WDG_Pin);
+        //if ((written % (10*1024)) < VC0706_READ_CHUNK ) myprintf(".");
     }
-    myprintf("\r\n");
+    //myprintf("\r\n");
 
     f_sync(&file);
     f_close(&file);
     (void)vc0706_resume_video(cam);
     f_mount(NULL, "", 0);
 
-    myprintf("done: %s (%lu bytes)\r\n", filename, (unsigned long)written);
+    //myprintf("done: %s (%lu bytes)\r\n", filename, (unsigned long)written);
     return 0;
 }
-
-///////////// PARA LA NUCLEO ///////////
-
 /*
-
 void user_loop_sender_sd(void)
 {
     if (!g_sending && button_pressed_edge()) {
-    	myprintf("Enviando \r\n");
+    	//myprintf("Enviando \r\n");
         g_sending = true;
         (void)send_file_over_uart(SEND_FILENAME);
         g_sending = false;
     }
 }
+*/
 
+/*
+
+void user_loop_sender_uart(int status,bool status16, bool status32)
+{
+    //if (!g_sending && button_pressed_edge()) {
+    if (status==1 && status16==true && status32==true) {
+    	//myprintf("Enviando \r\n");
+        g_sending = true;
+        (void)send_file_over_uart(SEND_FILENAME);
+        g_sending = false;
+    }else{
+    	//myprintf("Comando mal recibido \n");
+    }
+}
 */
 
 
-
+/*
 void user_loop_sender_cam_sd(void)
 {
+    if (!g_sending && button_pressed_edge()) {
+        g_sending = true;
 
+        char filename[40];
+        if (generar_nombre_unico(filename, sizeof(filename)) != 0) {
+            //myprintf("name gen failed\r\n");
+            g_sending = false;
+            return;
+        }
+
+        //myprintf("Capturando y guardando: %s\r\n", filename);
+        int rc = capturar_imagen_a_sd_manual(&cam);
+        if (rc != 0) {
+            //myprintf("capture/save failed rc=%d\r\n", rc);
+            g_sending = false;
+            return;
+        }
+
+        //myprintf("Enviando por UART: %s\r\n", filename);
+
+        HAL_Delay(500);
+        (void)send_file_over_uart(filename);
+        g_sending = false;
+
+
+
+    }
+}
+*/
+
+
+void envia_defrente(void)
+{
+
+	HAL_GPIO_TogglePin(WDG_GPIO_Port, WDG_Pin);
 	char filename[40];
 	if (generar_nombre_unico(filename, sizeof(filename)) != 0) {
-		myprintf("name gen failed\r\n");
-
+		//myprintf("name gen failed\r\n");
 		return;
 	}
 
-	myprintf("Capturando y guardando: %s\r\n", filename);
+	//myprintf("Capturando y guardando: %s\r\n", filename);
 	int rc = capturar_imagen_a_sd_manual(&cam);
 	if (rc != 0) {
-		myprintf("capture/save failed rc=%d\r\n", rc);
+		//myprintf("capture/save failed rc=%d\r\n", rc);
 		return;
 	}
 
-	//Watchdog togglepin
-	HAL_GPIO_TogglePin(WDG_GPIO_Port, WDG_Pin);
 
-
-	myprintf("Enviando por UART: %s\r\n", filename);
-
-	HAL_Delay(500);
-	(void)send_file_over_uart(filename);
-	myprintf("Termino envio: %s\r\n", filename);
+	//HAL_Delay(2000);
+	//(void)send_file_over_uart(filename);
 
 }
 
 
 
+
+/* **************************************** Programacion de comandos ********************************************/
+
+/************************************************
+ Declaracion de cabeceras, payload y variables
+ ************************************************/
+
+uint8_t TA=0x05; /*TA=TargetAddress*/
+uint8_t SA=0x88; /*SA=SourceAddress*/
+
+/*PPID=PayloadProtocolID
+(Define las funciones
+ Toma de foto camara 1: id=0x01
+ Toma de foto camara 2: id=0x02)*/
+uint8_t PPID;
+
+/*PS=PayloadSize (Tamaño del payload)
+ PayloadComando= 1-2bytes
+ PayloadData= 1-255bytes*/
+uint8_t PS;
+
+/*Payload*/
+uint8_t payload_total[255];
+uint8_t payload_envio[]={};
+
+/*CRC32*/
+uint32_t CRC32;
+
+/*Variable*/
+uint8_t count;
+uint8_t val;
+
+
+/**************************************
+ * Generacion PS (payload size)
+ ***************************************/
+
+
+uint8_t countPay(uint8_t* payload_envio){
+	/*Define la cantidad de bytes (size) del payload*/
+	  for (int i=0; i<255; i++){
+		  val = payload_envio[i] & 0b11111111;
+		  if (val != 0x00){
+			  count=count+1;
+		  }
+	  }
+
+	  /*cumple con darnos la cantidad de bytes(size) del payload*/
+	  PS=count;
+	  return PS;
+}
+
+
+/****************************************
+ * Funciones generan CRC16 y CRC32
+ ***************************************/
+
+bool gener_crc16(uint8_t *cabecera,uint8_t size_cabecera,uint8_t *cab){
+
+		    uint16_t G_X = 0x1021; // Polynomial generator
+		    uint16_t CRC16 = 0xFFFF;
+		    uint8_t InvArreglo[4] = {};
+		    uint8_t Temp;
+		    uint8_t InvBits[4] ={}; //Arreglo de bits invertidos de la cabecera  (LSB first)
+		    uint8_t Fin=0x00;
+
+		    //Se invierten los elementos del array
+		    for(int i=0; i<size_cabecera; i++){
+		    	InvArreglo[i]=cabecera[size_cabecera-i-1];
+		    }
+
+		    //Se invierten los bits de los elementos del array
+		    for(int j=0; j<size_cabecera;j++){
+		    	for(int i=0; i<8; i++){
+		    		Temp=InvArreglo[j]&(0x80);
+		    		//InvBits[0]=InvArreglo[1];
+		    		//HAL_UART_Transmit(&huart2,InvBits,sizeof(InvBits),100);// Sending in normal mode
+		    		//HAL_Delay(1000);
+		    		if(Temp!=0x00){
+		    			Fin=(Fin>>1);
+		    			Fin=Fin|(0x80);
+		    			InvArreglo[j]=(InvArreglo[j]<<1);
+		    			// InvBits[0]=Fin;
+		    			// HAL_UART_Transmit(&huart2,InvBits,sizeof(InvBits),100);// Sending in normal mode
+		    			// HAL_Delay(1000);
+		    		}else{
+		    			Fin=(Fin>>1);
+		    			InvArreglo[j]=(InvArreglo[j]<<1);
+		    			//InvBits[0]=InvArreglo[0];
+		    			//HAL_UART_Transmit(&huart2,InvBits,sizeof(InvBits),100);// Sending in normal mode
+		    			//HAL_Delay(1000);
+		    		}
+		    	}
+		    	InvBits[j]=Fin;
+		    	Fin=0x00;
+		    }
+
+		    //Algoritmo para la generación del CRC16 de la cabecera invertida
+		    for(int i=0; i<sizeof(InvBits)/sizeof(InvBits[0]); i++){
+		    	  CRC16 ^= (uint16_t)(InvBits[i]<<8);
+
+		    	  for (int i=0; i<8; i++){
+		    		  if ((CRC16 & 0x8000) != 0){
+		    			  CRC16 = (uint16_t)((CRC16 <<1)^G_X);
+		    		  }else{
+		    			  CRC16 <<=1;
+		    		  }
+		    	  }
+		    }
+
+		    // El CRC16 de 0x8805 = 0xC294
+		    // El CRC16 de 0x88050101 = 0x901B
+		    // El CRC16 de 0x8080A011 (0x88050101 invertido) = 0x7DCC
+		    uint8_t CRC16_0 = (uint8_t)(CRC16 & 0x00FF);
+		    uint8_t CRC16_1 = (uint8_t)((CRC16 >> 8)& 0x00FF);
+
+		    bool status_crc16;
+		    if(CRC16_0==cab[4] && CRC16_1==cab[5]){
+		  	  status_crc16= true;
+		  	  //myprintf("El CRC16 se recibio correctamente ... \n");
+		  	  //myprintf("%02X %02X\n",cab[4],cab[5]);
+		  	  return status_crc16;
+		    }else{
+		  	  status_crc16= false;
+		  	  //myprintf("El CRC16 no esta correcto ... \n");
+		  	  //myprintf("%02X %02X\n",cab[4],cab[5]);
+		  	  return status_crc16;
+		    }
+}
+
+
+bool gener_crc32(uint8_t *payload_cabecera,uint8_t size_cabecera,uint8_t *cab){
+
+			//Algoritmo para la generación del CRC32 de la cabecera invertida
+		    uint32_t G_Y = 0x04C11DB7; // Polynomial generator
+		    uint32_t CRC32 = 0xFFFFFFFF;
+		    uint8_t InvArreglo2[7] = {};
+		    uint8_t Temp2;
+		    uint8_t Fin2=0x00;
+		    uint8_t InvBits2[7] ={};
+
+		    //Se invierten los elementos del array
+		    //Frame actual: 0x01 0xCC 0x7D 0x01 0x01 0x05 0x88
+		    for(int i=0; i<size_cabecera; i++){
+		    	InvArreglo2[i]=payload_cabecera[size_cabecera-i-1];
+		    }
+
+		    //Se invierten los bits de los elementos del array
+		    //Frame LBS: 0x80 0x33 0xBE 0x80 0x80 0xA0 0x11
+		    for(int j=0; j<size_cabecera;j++){
+		    	for(int i=0; i<8; i++){
+		    		Temp2=InvArreglo2[j]&(0x80);
+		    		//InvBits3[0]=InvArreglo2[j];
+		    		//HAL_UART_Transmit(&huart2,InvBits3,sizeof(InvBits3),100);// Sending in normal mode
+		    		//HAL_Delay(1000);
+		    		if(Temp2!=0x00){
+		    			Fin2=(Fin2>>1);
+		    			Fin2=Fin2|(0x80);
+		    			InvArreglo2[j]=(InvArreglo2[j]<<1);
+		    			//InvBits3[0]=Fin2;
+		    			//HAL_UART_Transmit(&huart2,InvBits3,sizeof(InvBits3),100);// Sending in normal mode
+		    			//HAL_Delay(1000);
+		    		}else{
+		    			Fin2=(Fin2>>1);
+		    			InvArreglo2[j]=(InvArreglo2[j]<<1);
+		    			//InvBits[0]=InvArreglo[0];
+		    			//HAL_UART_Transmit(&huart2,InvBits,sizeof(InvBits),100);// Sending in normal mode
+		    			//HAL_Delay(1000);
+		    		}
+		    	}
+		    	InvBits2[j]=Fin2;
+		    	Fin2=0x00;
+		    }
+
+		    for(int j=0; j<sizeof(InvBits2)/sizeof(InvBits2[0]); j++){
+		    	CRC32 ^= (uint32_t)(InvBits2[j]<<24);
+
+		    	  for (int j=0; j<8; j++){
+		    		  if ((CRC32 & 0x80000000) != 0){
+		    			  CRC32 = (uint32_t)((CRC32 <<1)^G_Y);
+		    		  }else{
+		    			  CRC32 <<=1;
+		    		  }
+		    	  }
+		    }
+
+		    uint8_t CRC32_byte3 = (uint8_t)((CRC32 >> 24) & 0xFF);//MSB
+		    uint8_t CRC32_byte2 = (uint8_t)((CRC32 >> 16) & 0xFF);
+		    uint8_t CRC32_byte1 = (uint8_t)((CRC32 >> 8) & 0xFF);
+		    uint8_t CRC32_byte0 = (uint8_t)(CRC32 & 0xFF);//LSB
+
+		    bool status_crc32;
+
+		    //myprintf(" los crc32 son %02X %02X %02X %02X\n",CRC32_byte0,CRC32_byte1,CRC32_byte2,CRC32_byte3);
+		    if(CRC32_byte0==cab[7] && CRC32_byte1==cab[8] && CRC32_byte2==cab[9] && CRC32_byte3==cab[10]){
+		  	  status_crc32= true;
+		  	  //myprintf("El CRC32 se recibio correctamente ... \n");
+		  	  //myprintf("%02X %02X %02X %02X\n",cab[7],cab[8],cab[9],cab[10]);
+		  	  return status_crc32;
+		    }else{
+		  	  status_crc32= false;
+		  	  //myprintf("El CRC32 no esta correcto ... \n");
+		  	  //myprintf("%02X ..\n",cab[7]);
+		  	  //myprintf("%02X %02X %02X %02X\n",cab[7],cab[8],cab[9],cab[10]);
+		  	  return status_crc32;
+		    }
+}
+
+
+
+/*Funcion generadora del CRC16 */
+uint16_t gener_crc16_rx (uint8_t TA,uint8_t SA,uint8_t PPID,uint8_t PS){
+
+	 /***************************************************
+	  * Definicion de variables y algoritmo para el CRC16
+	  * Con inversion de bits
+	  * CRC-CCITT-BR (bit reverse): LSB first
+	  * CRC16, G(x)=0x1021 (algoritmo)
+	  * CRC initial: 0XFFFF
+	  * Cabecera inicial: 0x88 0x05 0x01 0x01
+	  * Cabecera invertida: 0x80 0x80 0xA0 0x11
+	  ***************************************************/
+	  uint16_t G_X = 0x1021; // Polynomial generator
+	  uint16_t CRC16 = 0xFFFF;
+	  uint8_t arreglo[4] = {TA,SA,PPID,PS};//Se aumento PPID,PS
+	  uint8_t InvArreglo[4] = {};
+	  uint8_t InvBits[4] ={}; //Arreglo de bits invertidos de la cabecera  (LSB first)
+	  uint8_t Temp;
+	  uint8_t Fin=0x00;
+	  uint8_t n = sizeof(arreglo)/sizeof(arreglo[0]);
+
+	  //Se invierten los elementos del array
+	  //Cabecera actual: 0x01 0x01 0x05 0x88
+	  for(int i=0; i<n; i++){
+		  InvArreglo[i]=arreglo[n-i-1];
+	  }
+
+	  //InvArreglo[0]=0x35;
+
+	  //Se invierten los bits de los elementos del array
+	  //Cabecera LBS: 0x80 0x80 0xA0 0x11
+	  for(int j=0; j<n;j++){
+		  for(int i=0; i<8; i++){
+			  Temp=InvArreglo[j]&(0x80);
+			  //InvBits[0]=InvArreglo[1];
+			  //HAL_UART_Transmit(&huart2,InvBits,sizeof(InvBits),100);// Sending in normal mode
+			  //HAL_Delay(1000);
+			  if(Temp!=0x00){
+				  Fin=(Fin>>1);
+				  Fin=Fin|(0x80);
+				  InvArreglo[j]=(InvArreglo[j]<<1);
+				  // InvBits[0]=Fin;
+				  // HAL_UART_Transmit(&huart2,InvBits,sizeof(InvBits),100);// Sending in normal mode
+				  // HAL_Delay(1000);
+			  }else{
+				  Fin=(Fin>>1);
+				  InvArreglo[j]=(InvArreglo[j]<<1);
+				  //InvBits[0]=InvArreglo[0];
+				  //HAL_UART_Transmit(&huart2,InvBits,sizeof(InvBits),100);// Sending in normal mode
+				  //HAL_Delay(1000);
+			  }
+		  }
+		  InvBits[j]=Fin;
+		  Fin=0x00;
+	  }
+
+	  //Algoritmo para la generación del CRC16 de la cabecera invertida
+	  for(int i=0; i<sizeof(InvBits)/sizeof(InvBits[0]); i++){
+	  	  CRC16 ^= (uint16_t)(InvBits[i]<<8);
+
+	  	  for (int i=0; i<8; i++){
+	  		  if ((CRC16 & 0x8000) != 0){
+	  			  CRC16 = (uint16_t)((CRC16 <<1)^G_X);
+	  		  }else{
+	  			  CRC16 <<=1;
+	  		  }
+	  	  }
+	   }
+
+	  return CRC16;
+
+	  // El CRC16 de 0x8805 = 0xC294
+	  // El CRC16 de 0x88050101 = 0x901B
+	  // El CRC16 de 0x8080A011 (0x88050101 invertido) = 0x7DCC
+
+	  /*uint8_t CRC16_0 = (uint8_t)(CRC16 & 0x00FF);
+	  uint8_t CRC16_1 = (uint8_t)((CRC16 >> 8)& 0x00FF);*/
+}
+
+/*Funcion generadora del CRC32*/
+uint32_t gener_crc32_rx (uint8_t TA,uint8_t SA,uint8_t PPID,uint8_t PS,uint8_t CRC16_1, uint8_t CRC16_0,uint8_t payload_envio_0){
+
+	/***************************************************
+	   * Definicion de variables y algoritmo para el CRC32
+	   * Con inversion de bits
+	   * CRC-CRC32-ISO3309, LSB first
+	   * CRC32, G(x)= 0x04C11DB7 (algoritmo)
+	   * CRC initial: 0xFFFFFFFF
+	   * Prueba inicial: 0x88 05 01 01 7D CC 01
+	  **************************************************/
+	  uint32_t G_Y = 0x04C11DB7; // Polynomial generator
+	  uint32_t CRC32 = 0xFFFFFFFF;
+	  uint8_t arreglo2[7]={TA,SA,PPID,PS,CRC16_1,CRC16_0,payload_envio_0};
+
+	  uint8_t InvArreglo2[7] = {};
+	  uint8_t InvBits2[7] ={}; //Arreglo de bits invertidos de la cabecera  (LSB first)
+	  //uint8_t InvBits3[1]={};
+	  uint8_t Temp2;
+	  uint8_t Fin2=0x00;
+	  uint8_t n2 = sizeof(arreglo2)/sizeof(arreglo2[0]);
+
+	  //Se invierten los elementos del array
+	  //Frame actual: 0x01 0xCC 0x7D 0x01 0x01 0x05 0x88
+	  for(int i=0; i<n2; i++){
+		  InvArreglo2[i]=arreglo2[n2-i-1];
+	  }
+
+	  //Se invierten los bits de los elementos del array
+	  //Frame LBS: 0x80 0x33 0xBE 0x80 0x80 0xA0 0x11
+	  for(int j=0; j<n2;j++){
+	  	  for(int i=0; i<8; i++){
+	  		  Temp2=InvArreglo2[j]&(0x80);
+	    	   	  //InvBits3[0]=InvArreglo2[j];
+	    	   	  //HAL_UART_Transmit(&huart2,InvBits3,sizeof(InvBits3),100);// Sending in normal mode
+	    	   	  //HAL_Delay(1000);
+	  		  if(Temp2!=0x00){
+	  			  Fin2=(Fin2>>1);
+	  			  Fin2=Fin2|(0x80);
+	  			  InvArreglo2[j]=(InvArreglo2[j]<<1);
+	    	   		  //InvBits3[0]=Fin2;
+	    	   		  //HAL_UART_Transmit(&huart2,InvBits3,sizeof(InvBits3),100);// Sending in normal mode
+	    	   		  //HAL_Delay(1000);
+	  		  }else{
+	  			  Fin2=(Fin2>>1);
+	  			  InvArreglo2[j]=(InvArreglo2[j]<<1);
+	  			  //InvBits[0]=InvArreglo[0];
+	    	   		  //HAL_UART_Transmit(&huart2,InvBits,sizeof(InvBits),100);// Sending in normal mode
+	    	   		  //HAL_Delay(1000);
+	  		  }
+	  	  }
+	  	  InvBits2[j]=Fin2;
+	  	  Fin2=0x00;
+	  }
+
+	  //InvBits3[0]=InvBits2[6];
+	  //HAL_UART_Transmit(&huart2,InvBits3,sizeof(InvBits3),100);// Sending in normal mode
+	  //HAL_Delay(1000);
+
+	  //Algoritmo para la generación del CRC32 de la cabecera invertida
+	  for(int j=0; j<sizeof(InvBits2)/sizeof(InvBits2[0]); j++){
+	  	  CRC32 ^= (uint32_t)(InvBits2[j]<<24);
+
+	  	  for (int j=0; j<8; j++){
+	  		  if ((CRC32 & 0x80000000) != 0){
+	  			  CRC32 = (uint32_t)((CRC32 <<1)^G_Y);
+	  		  }else{
+	  			  CRC32 <<=1;
+	  		  }
+	  	  }
+	  }
+
+	  return CRC32;
+
+	  // El CRC32 de 0x88050101 = 0x486ABA9C
+	  // El CRC32 de 0x8033BE8080A011 = 0x81C46721
+	  /*uint8_t CRC32_byte3 = (uint8_t)((CRC32 >> 24) & 0xFF);//MSB
+	  uint8_t CRC32_byte2 = (uint8_t)((CRC32 >> 16) & 0xFF);
+	  uint8_t CRC32_byte1 = (uint8_t)((CRC32 >> 8) & 0xFF);
+	  uint8_t CRC32_byte0 = (uint8_t)(CRC32 & 0xFF);//LSB*/
+}
+
+
+/*******************************************************************************************************************/
+
+uint8_t recibir_comando(void){
+	int a =1;
+	uint8_t cab[11]={};
+	uint8_t comando;
+	while (a==1)
+	{
+
+		  //************************************* Recibiendo comando *************************************************************
+		  //Armado de Protocolo |TA|SA|PPID|PS|CRC16_0|CRC16_1|Payload[0]|CRC32_0|CRC32_1|CRC32_2|CRC32_3|
+		  //**********************************************************************************************************************
+
+		    //myprintf("Esperando comando ... \n");
+		    HAL_StatusTypeDef status_rec = HAL_UART_Receive(&LINK_UART_HANDLE,cab,11,2500);
+
+		    //myprintf("\r\n MicroSD inicializo BIEN \r\n\r\n");
+		    //HAL_UART_Transmit(&huart4,cab,11,2500);
+		    //myprintf("%02X ..\n",cab[7]);
+		    //myprintf("%02X %02X %02X %02X \n",cab[0],cab[1],cab[2],cab[3]);
+		    //myprintf("%02X %02X %02X %02X \n",cab[4],cab[5],cab[6],cab[7]);
+		    //myprintf("%02X %02X %02X  \n",cab[8],cab[9],cab[10]);
+		    //myprintf("%02X ..\n",cab[6]);
+		    //Verificar si logro recibir el comando
+
+		    //int status;
+		    HAL_GPIO_TogglePin(WDG_GPIO_Port, WDG_Pin);
+
+		    if(status_rec==HAL_OK){
+		    	//status=1;
+		    	//myprintf("Comando Recibido \n");
+		    	//HAL_UART_Transmit(&huart4,cab,11,2500);
+		    	//myprintf("%11X \n",cab);
+		    	//myprintf("Status %d \n",status);
+			    uint8_t cabecera[4] = {cab[0],cab[1],cab[2],cab[3]};
+			    uint8_t size_cabecera = sizeof(cabecera)/sizeof(cabecera[0]);
+
+			    bool status_crc16= gener_crc16(cabecera,size_cabecera,cab);
+			    //********************** Verificacion CRC32
+			    uint8_t payload_cabecera[7] = {cab[0],cab[1],cab[2],cab[3],cab[5],cab[4],cab[6]};
+			    uint8_t size_payload_cabe = sizeof(payload_cabecera)/sizeof(payload_cabecera[0]);
+			    //myprintf("entrando al crc32 x1... \n");
+				bool status_crc32 = gener_crc32(payload_cabecera,size_payload_cabe,cab);
+				if (status_crc16 == 1 && status_crc32 ==1 ){
+					comando =  cab[6];
+					a=0;
+					break;
+				}
+				else {
+					comando =  0xFF;
+					a=0;
+					break;
+				}
+				HAL_Delay(100);
+
+
+
+				break;
+
+		    }else{
+		    	//status=0;
+		    	//myprintf("Status %d \n",status);
+		    	//myprintf("Comando no recibido\n");
+		    	comando = 0xFF;
+		    }
+		}
+		return comando;
+}
+
+
+
+
+
+
+
+
+
+
+
+
+void comando_recibido(uint8_t cab6){
+  switch(cab6){
+   case 0x01:
+	//payload_total[0]=0x01; /*TomaFotoSD*/
+	   //myprintf("Comando toma foto recibido\n");
+	   envia_defrente();
+
+	   enviar_comando(0X01);
+	   break;
+   case 0x02:
+	//payload_total[0]=0x02; /*EnvíoFotoPaySTM32*/
+	   //myprintf("Comando toma enviar foto\n");
+	   HAL_GPIO_TogglePin(WDG_GPIO_Port, WDG_Pin);
+	   HAL_Delay(3000);
+	   (void)send_file_over_uart(filename);
+	   enviar_comando(0X02);
+
+	   break;
+   case 0x03:
+	   enviar_comando(0X03);
+	   //envia_defrente();
+	   break;
+   case 0x05:
+	   enviar_comando(0X05);
+	   break;
+   case 0x08:
+	   enviar_comando(0X08);
+	   break;
+   case 0x06:
+	//myprintf("\r\n Camara inicializo BIEN \r\n\r\n");
+	   break;
+   case 0x00:
+	   enviar_comando(0X00);
+	   break;
+   case 0xFF:
+	   enviar_comando(0XFF);
+	   break;
+   default:
+	   enviar_comando(cab6);
+
+  }
+
+
+}
+
+void enviar_comando(uint8_t indicador){
+
+	//PPID=indicador; // halla el PPID del frame recibido
+
+	//payload_total[0] = comando_enviado(PPID); //Halla el payload_total con respecto al PPID
+
+	PPID=indicador;
+    // TODO: por ahiora etsa binem pero deben cambiar por el tema del payload
+	payload_total[0] = indicador;
+
+	for (int i=0; i<255; i++){
+	  val = payload_total[i] & 0b11111111;
+	  if (val != 0x00){
+		  count=count+1;
+	  }
+	}
+
+	//payload_envio[0] = payload_total[0];
+
+    //PS = countPay(payload_envio);
+	//PS = count;
+	payload_envio[0] = payload_total[0];
+	PS = 0X01;
+
+
+    /******************************
+    * Hallando el CRC16 y CRC32
+    ******************************/
+    uint16_t CRC16 = gener_crc16_rx(TA,SA,PPID,PS);
+
+    uint8_t CRC16_0 = (uint8_t)(CRC16 & 0x00FF);
+    uint8_t CRC16_1 = (uint8_t)((CRC16 >> 8)& 0x00FF);
+
+    uint32_t CRC32 = gener_crc32_rx(TA,SA,PPID,PS,CRC16_1,CRC16_0,payload_envio[0]);
+
+    uint8_t CRC32_byte3 = (uint8_t)((CRC32 >> 24) & 0xFF);//MSB
+    uint8_t CRC32_byte2 = (uint8_t)((CRC32 >> 16) & 0xFF);
+    uint8_t CRC32_byte1 = (uint8_t)((CRC32 >> 8) & 0xFF);
+    uint8_t CRC32_byte0 = (uint8_t)(CRC32 & 0xFF);//LSB
+
+    uint8_t resp[] = {TA,SA,PPID,PS,CRC16_0,CRC16_1,payload_envio[0],CRC32_byte0,CRC32_byte1,CRC32_byte2,CRC32_byte3};
+
+    //myprintf("%02X %02X %02X %02X \n",resp[0],resp[1],resp[2],resp[3]);
+    //myprintf("%02X %02X %02X %02X \n",resp[4],resp[5],resp[6],resp[7]);
+    //myprintf("%02X %02X %02X  \n",resp[8],resp[9],resp[10]);
+
+    HAL_Delay(500);
+	//myprintf("Enviando comando ... \n");
+	//HAL_UART_Transmit(&huart4,resp,11,2500);
+	//myprintf("%X \n",resp);
+	//uint8_t cab[] = {CRC32_byte3,CRC32_byte2,CRC32_byte1,CRC32_byte0};
+    //myprintf("\r\n ENVIANDO \r\n\r\n");
+	HAL_StatusTypeDef status_rec = HAL_UART_Transmit(&LINK_UART_HANDLE,resp,11,2500);// Sending in normal mode
+	//myprintf("\r\n ENVIADO \r\n\r\n");
+	HAL_Delay(500);
+	count = 0;
+
+	//myprintf("\r\n  \r\n\r\n");
+	//HAL_UART_Transmit(&huart4,payload_total[0],1,2500);
+	//myprintf("\r\n %d \r\n\r\n",payload_envio[0]);
+	//myprintf("\r\n %d \r\n\r\n",sizeof(payload_envio)/sizeof(payload_envio[0]));
+
+}
+
+void comando_enviado(uint8_t PPID){
+	 /**********************************
+	   Definicion payload de respuesta
+	   Comando de foto en camara 1: 0x01
+	  **********************************/
+	  //uint8_t payload_total[255];
+	  uint8_t val_pay;
+
+	  switch(PPID){
+	   case 0x01:
+		val_pay=0x02; /*Rpta TomaFotoSD*/
+	  	break;
+	   case 0x02:
+		val_pay=0x04; /*Rpta EnvíoFotoPaySTM32*/
+	    break;
+	   case 0x03:
+		val_pay=0x06; /*Rpta TomaFotoALmacYenviaPayload*/
+	    break;
+	   default:
+		val_pay=0xFF;
+	  }
+
+	  //return payload_total;
+	  return val_pay;
+}
 
 
 /* USER CODE END PV */
@@ -460,7 +1090,6 @@ static void MX_GPIO_Init(void);
 static void MX_SPI1_Init(void);
 static void MX_USART1_UART_Init(void);
 static void MX_USART2_UART_Init(void);
-static void MX_UART5_Init(void);
 /* USER CODE BEGIN PFP */
 
 /* USER CODE END PFP */
@@ -502,10 +1131,17 @@ int main(void)
   MX_USART1_UART_Init();
   MX_USART2_UART_Init();
   MX_FATFS_Init();
-  MX_UART5_Init();
   /* USER CODE BEGIN 2 */
 
-  myprintf("\r\n~ SD card demo by kiwih ~\r\n\r\n");
+
+  HAL_Delay(2000); //a short delay is important to let the SD card settle
+
+  //some variables for FatFs
+  FATFS FatFs; 	//Fatfs handle
+  FIL fil; 		//File handle
+  FRESULT fres; //Result after operations
+
+
   HAL_Delay(2000);
 
   HAL_GPIO_WritePin(WDG_GPIO_Port, WDG_Pin, GPIO_PIN_RESET);
@@ -516,88 +1152,43 @@ int main(void)
 
   //Led apagado
   HAL_GPIO_WritePin(LED_TEST_GPIO_Port, LED_TEST_Pin,                   GPIO_PIN_RESET);
-  HAL_GPIO_WritePin(PTE_GPIO_Port, PTE_Pin,                   GPIO_PIN_RESET);
 
+  HAL_GPIO_WritePin(GPIOG, EN_SD_Pin,                   GPIO_PIN_RESET);
   //Deshabilitar la FRAM
-  HAL_GPIO_WritePin(GPIOG, EN_FR_Pin  | EN_SD_Pin,       GPIO_PIN_SET);
+  HAL_GPIO_WritePin(GPIOG, EN_FR_Pin ,    GPIO_PIN_SET);
 
 
   //Led prendido
   HAL_GPIO_WritePin(LED_TEST_GPIO_Port, LED_TEST_Pin,                   GPIO_PIN_SET);
-  HAL_GPIO_WritePin(PTE_GPIO_Port, PTE_Pin,                   GPIO_PIN_SET);
-  HAL_Delay(2000);
+
+  HAL_Delay(200);
 
   HAL_GPIO_WritePin(LED_TEST_GPIO_Port, LED_TEST_Pin,                   GPIO_PIN_RESET);
-  HAL_GPIO_WritePin(PTE_GPIO_Port, PTE_Pin,                   GPIO_PIN_RESET);
-  HAL_Delay(2000);
+
+  HAL_Delay(200);
 
   HAL_GPIO_WritePin(LED_TEST_GPIO_Port, LED_TEST_Pin,                   GPIO_PIN_SET);
 
 
-
-  myprintf("\r\n~ SD card demo by kiwih ~\r\n\r\n");
-
-  HAL_Delay(2000); //a short delay is important to let the SD card settle
-
   //Watchdog togglepin
   HAL_GPIO_TogglePin(WDG_GPIO_Port, WDG_Pin);
 
   HAL_GPIO_WritePin(LED_TEST_GPIO_Port, LED_TEST_Pin,                   GPIO_PIN_RESET);
 
-  //some variables for FatFs
-  FATFS FatFs; 	//Fatfs handle
-  FIL fil; 		//File handle
-  FRESULT fres; //Result after operations
 
-  //Open the file system
-  fres = f_mount(&FatFs, "", 1); //1=mount now
-  if (fres != FR_OK) {
-	myprintf("f_mount error (%i)\r\n", fres);
-	//while(1);
-  }
-
-  //Let's get some statistics from the SD card
-  DWORD free_clusters, free_sectors, total_sectors;
-
-  FATFS* getFreeFs;
-
-  fres = f_getfree("", &free_clusters, &getFreeFs);
-  if (fres != FR_OK) {
-	myprintf("f_getfree error (%i)\r\n", fres);
-	//while(1);
-  }
-
-  //Formula comes from ChaN's documentation
-  total_sectors = (getFreeFs->n_fatent - 2) * getFreeFs->csize;
-  free_sectors = free_clusters * getFreeFs->csize;
-
-  myprintf("SD card stats:\r\n%10lu KiB total drive space.\r\n%10lu KiB available.\r\n", total_sectors / 2, free_sectors / 2);
-  HAL_Delay(1000);
-
-  //Watchdog togglepin
-  HAL_GPIO_TogglePin(WDG_GPIO_Port, WDG_Pin);
-
-
-  int rc = camera_init();
-
-  //Watchdog togglepin
-  HAL_GPIO_TogglePin(WDG_GPIO_Port, WDG_Pin);
-
-  HAL_Delay(1000);
-
-
-  if (rc != 0) {
-      myprintf("camera_init failed (%d)\r\n", rc);
-      // opcional: parpadear LED o quedarse en loop de error
-      // while (1) { HAL_Delay(250); }
-  } else {
-      myprintf("camera ok\r\n");
-  }
 
   //Led apagado
   HAL_GPIO_WritePin(LED_TEST_GPIO_Port, LED_TEST_Pin,                   GPIO_PIN_SET);
-  HAL_Delay(5000);
+  HAL_Delay(500);
   HAL_GPIO_WritePin(LED_TEST_GPIO_Port, LED_TEST_Pin,                   GPIO_PIN_RESET);
+
+  int estado = 2;
+  int inicia = 0;
+  int inicia2 = 0;
+  int inicia3= 0;
+  int bandera = 1;
+
+
 
 
 
@@ -610,10 +1201,63 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
-	  myprintf("camara lista\r\n");
-	  //HAL_Delay(5000);
-	  //HAL_GPIO_TogglePin(WDG_GPIO_Port, WDG_Pin);
-	  //user_loop_sender_cam_sd();
+	  while (estado ==1){
+		  HAL_GPIO_TogglePin(WDG_GPIO_Port, WDG_Pin);
+		  uint8_t comando = recibir_comando();
+		  HAL_Delay(100);
+		  uart_flush_rx_polling(&LINK_UART_HANDLE);
+		  comando_recibido(comando);
+
+
+
+	  }
+	  while (estado ==2){
+		  HAL_GPIO_WritePin(LED_TEST_GPIO_Port, LED_TEST_Pin,                   GPIO_PIN_SET);
+		  HAL_GPIO_TogglePin(WDG_GPIO_Port, WDG_Pin);
+		  while(bandera == 1){
+
+			  fres = f_mount(&FatFs, "", 1); //1=mount now
+			  HAL_Delay(1000);
+			  HAL_GPIO_TogglePin(LED_TEST_GPIO_Port, LED_TEST_Pin);
+			  HAL_GPIO_TogglePin(WDG_GPIO_Port, WDG_Pin);
+
+			  if (fres == FR_OK) {
+				  inicia = 3;
+				  bandera = 0;
+				  break;
+			  }
+		  }
+
+		  HAL_GPIO_TogglePin(WDG_GPIO_Port, WDG_Pin);
+		  int rc = camera_init();
+		  HAL_Delay(1000);
+		  if (rc == 0) {
+			  inicia2 = 5;
+		  }
+		  HAL_GPIO_TogglePin(WDG_GPIO_Port, WDG_Pin);
+		  //enviar_comando(fres);
+		  //comando_recibido(fres);
+
+		  inicia3 =  inicia + inicia2;
+
+		  if (inicia3 == 8){
+			  comando_recibido(0x08);
+		  }
+		  else if(inicia3 == 3){
+			  comando_recibido(0x03);
+		  }
+		  else if(inicia3 == 5){
+			  comando_recibido(0x05);
+		  }
+		  else{
+			  comando_recibido(0x00);
+		  }
+
+		  estado = 1;
+		  break;
+	  }
+
+
   }
   /* USER CODE END 3 */
 }
@@ -656,7 +1300,7 @@ void SystemClock_Config(void)
                               |RCC_CLOCKTYPE_PCLK1|RCC_CLOCKTYPE_PCLK2;
   RCC_ClkInitStruct.SYSCLKSource = RCC_SYSCLKSOURCE_PLLCLK;
   RCC_ClkInitStruct.AHBCLKDivider = RCC_SYSCLK_DIV2;
-  RCC_ClkInitStruct.APB1CLKDivider = RCC_HCLK_DIV2;
+  RCC_ClkInitStruct.APB1CLKDivider = RCC_HCLK_DIV1;
   RCC_ClkInitStruct.APB2CLKDivider = RCC_HCLK_DIV1;
 
   if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_1) != HAL_OK)
@@ -704,39 +1348,6 @@ static void MX_SPI1_Init(void)
 }
 
 /**
-  * @brief UART5 Initialization Function
-  * @param None
-  * @retval None
-  */
-static void MX_UART5_Init(void)
-{
-
-  /* USER CODE BEGIN UART5_Init 0 */
-
-  /* USER CODE END UART5_Init 0 */
-
-  /* USER CODE BEGIN UART5_Init 1 */
-
-  /* USER CODE END UART5_Init 1 */
-  huart5.Instance = UART5;
-  huart5.Init.BaudRate = 1200;
-  huart5.Init.WordLength = UART_WORDLENGTH_8B;
-  huart5.Init.StopBits = UART_STOPBITS_1;
-  huart5.Init.Parity = UART_PARITY_NONE;
-  huart5.Init.Mode = UART_MODE_TX_RX;
-  huart5.Init.HwFlowCtl = UART_HWCONTROL_NONE;
-  huart5.Init.OverSampling = UART_OVERSAMPLING_16;
-  if (HAL_HalfDuplex_Init(&huart5) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  /* USER CODE BEGIN UART5_Init 2 */
-
-  /* USER CODE END UART5_Init 2 */
-
-}
-
-/**
   * @brief USART1 Initialization Function
   * @param None
   * @retval None
@@ -752,7 +1363,7 @@ static void MX_USART1_UART_Init(void)
 
   /* USER CODE END USART1_Init 1 */
   huart1.Instance = USART1;
-  huart1.Init.BaudRate = 1200;
+  huart1.Init.BaudRate = 2400;
   huart1.Init.WordLength = UART_WORDLENGTH_8B;
   huart1.Init.StopBits = UART_STOPBITS_1;
   huart1.Init.Parity = UART_PARITY_NONE;
@@ -817,9 +1428,8 @@ static void MX_GPIO_Init(void)
   __HAL_RCC_GPIOA_CLK_ENABLE();
   __HAL_RCC_GPIOF_CLK_ENABLE();
   __HAL_RCC_GPIOG_CLK_ENABLE();
-  __HAL_RCC_GPIOE_CLK_ENABLE();
   __HAL_RCC_GPIOD_CLK_ENABLE();
-  __HAL_RCC_GPIOC_CLK_ENABLE();
+  __HAL_RCC_GPIOE_CLK_ENABLE();
 
   /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(GPIOA, SPI1_CS_Pin|LED_TEST_Pin, GPIO_PIN_RESET);
@@ -831,10 +1441,10 @@ static void MX_GPIO_Init(void)
   HAL_GPIO_WritePin(GPIOG, EN_FR_Pin|EN_SD_Pin, GPIO_PIN_RESET);
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(GPIOE, PTE_Pin|WDG_Pin, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(GPIOD, OE_SD_Pin|EN_CAM_Pin, GPIO_PIN_RESET);
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(GPIOD, OE_SD_Pin|EN_CAM_Pin, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(WDG_GPIO_Port, WDG_Pin, GPIO_PIN_RESET);
 
   /*Configure GPIO pins : SPI1_CS_Pin LED_TEST_Pin */
   GPIO_InitStruct.Pin = SPI1_CS_Pin|LED_TEST_Pin;
@@ -857,19 +1467,19 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(GPIOG, &GPIO_InitStruct);
 
-  /*Configure GPIO pins : PTE_Pin WDG_Pin */
-  GPIO_InitStruct.Pin = PTE_Pin|WDG_Pin;
-  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
-  GPIO_InitStruct.Pull = GPIO_NOPULL;
-  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
-  HAL_GPIO_Init(GPIOE, &GPIO_InitStruct);
-
   /*Configure GPIO pins : OE_SD_Pin EN_CAM_Pin */
   GPIO_InitStruct.Pin = OE_SD_Pin|EN_CAM_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(GPIOD, &GPIO_InitStruct);
+
+  /*Configure GPIO pin : WDG_Pin */
+  GPIO_InitStruct.Pin = WDG_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+  HAL_GPIO_Init(WDG_GPIO_Port, &GPIO_InitStruct);
 
 /* USER CODE BEGIN MX_GPIO_Init_2 */
 /* USER CODE END MX_GPIO_Init_2 */
