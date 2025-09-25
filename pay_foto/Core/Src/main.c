@@ -333,7 +333,7 @@ int capturar_imagen_a_sd_manual(vc0706_t *cam) {
     }
     //myprintf("size=%lu bytes\r\n", (unsigned long)jpglen);
 
-    //char filename[40];
+// FILENAME CHAR FILENAME
     int rc = generar_nombre_unico(filename, sizeof(filename));
     if (rc != 0) {
         //myprintf("name err=%d\r\n", rc);
@@ -473,11 +473,13 @@ void envia_defrente(void)
 {
 
 	HAL_GPIO_TogglePin(WDG_GPIO_Port, WDG_Pin);
-	char filename[40];
+
+	/* COMENTADO HHABIA CHAR FILENAME
 	if (generar_nombre_unico(filename, sizeof(filename)) != 0) {
 		//myprintf("name gen failed\r\n");
 		return;
 	}
+	*/
 
 	//myprintf("Capturando y guardando: %s\r\n", filename);
 	int rc = capturar_imagen_a_sd_manual(&cam);
@@ -893,6 +895,7 @@ uint8_t recibir_comando(void){
 
 		    //int status;
 		    HAL_GPIO_TogglePin(WDG_GPIO_Port, WDG_Pin);
+		    HAL_GPIO_TogglePin(LED_TEST_GPIO_Port, LED_TEST_Pin);
 
 		    if(status_rec==HAL_OK){
 		    	//status=1;
@@ -984,7 +987,7 @@ void comando_recibido(uint8_t cab6){
 	   enviar_comando(0XFF);
 	   break;
    default:
-	   enviar_comando(cab6);
+	   enviar_comando(0XFF);
 
   }
 
@@ -1182,11 +1185,12 @@ int main(void)
   HAL_Delay(500);
   HAL_GPIO_WritePin(LED_TEST_GPIO_Port, LED_TEST_Pin,                   GPIO_PIN_RESET);
 
-  int estado = 2;
+  int estado = 0;
   int inicia = 0;
   int inicia2 = 0;
   int inicia3= 0;
   int bandera = 1;
+  uint8_t comando = 0x00;
 
 
 
@@ -1200,18 +1204,38 @@ int main(void)
   {
     /* USER CODE END WHILE */
 
-    /* USER CODE BEGIN 3 */
-	  while (estado ==1){
-		  HAL_GPIO_TogglePin(WDG_GPIO_Port, WDG_Pin);
-		  uint8_t comando = recibir_comando();
-		  HAL_Delay(100);
-		  uart_flush_rx_polling(&LINK_UART_HANDLE);
-		  comando_recibido(comando);
+    /* USER CODE BEGIN 3 */\
 
+	  while (estado == 0){
+		  HAL_GPIO_TogglePin(WDG_GPIO_Port, WDG_Pin);
+		  comando = recibir_comando();
+		  if (comando == 0x01 || comando== 0x02 ){
+			  estado = 1;
+			  break;
+		  }
+		  else if (comando == 0x08){
+			  estado = 2;
+			  break;
+		  }
 
 
 	  }
-	  while (estado ==2){
+
+
+	  while (estado == 1){
+		  HAL_GPIO_TogglePin(WDG_GPIO_Port, WDG_Pin);
+
+		  //uint8_t comando = recibir_comando();
+		  HAL_Delay(100);
+		  uart_flush_rx_polling(&LINK_UART_HANDLE);
+		  comando_recibido(comando);
+		  estado = 0;
+		  comando = 0x00;
+		  break;
+
+
+	  }
+	  while (estado == 2){
 		  HAL_GPIO_WritePin(LED_TEST_GPIO_Port, LED_TEST_Pin,                   GPIO_PIN_SET);
 		  HAL_GPIO_TogglePin(WDG_GPIO_Port, WDG_Pin);
 		  while(bandera == 1){
@@ -1226,6 +1250,9 @@ int main(void)
 				  bandera = 0;
 				  break;
 			  }
+			  else {
+				  inicia = 0;
+			  }
 		  }
 
 		  HAL_GPIO_TogglePin(WDG_GPIO_Port, WDG_Pin);
@@ -1233,6 +1260,9 @@ int main(void)
 		  HAL_Delay(1000);
 		  if (rc == 0) {
 			  inicia2 = 5;
+		  }
+		  else {
+			  inicia2 = 0;
 		  }
 		  HAL_GPIO_TogglePin(WDG_GPIO_Port, WDG_Pin);
 		  //enviar_comando(fres);
@@ -1242,18 +1272,26 @@ int main(void)
 
 		  if (inicia3 == 8){
 			  comando_recibido(0x08);
+			  inicia3 = 0;
+			  comando = 0x00;
 		  }
 		  else if(inicia3 == 3){
 			  comando_recibido(0x03);
+			  inicia3 = 0;
+			  comando = 0x00;
 		  }
 		  else if(inicia3 == 5){
 			  comando_recibido(0x05);
+			  inicia3 = 0;
+			  comando = 0x00;
 		  }
 		  else{
 			  comando_recibido(0x00);
+			  inicia3 = 0;
+			  comando = 0x00;
 		  }
 
-		  estado = 1;
+		  estado = 0;
 		  break;
 	  }
 
